@@ -102,7 +102,6 @@ export class OktaAuthProvider implements OAuthHandlers {
         clientSecret: options.clientSecret,
         callbackURL: options.callbackUrl,
         audience: options.audience,
-        passReqToCallback: false as true,
         store: this._store,
         response_type: 'code',
       },
