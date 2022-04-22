@@ -46,7 +46,6 @@ import {
   RedirectInfo,
   SignInResolver,
 } from '../types';
-import { StateStore } from 'passport-oauth2';
 import { CatalogIdentityClient, getEntityClaims } from '../../lib/catalog';
 import { TokenIssuer } from '../../identity';
 import { Logger } from 'winston';
@@ -57,6 +56,7 @@ type PrivateInfo = {
 
 export type OktaAuthProviderOptions = OAuthProviderOptions & {
   audience: string;
+  scope?: string;
   signInResolver?: SignInResolver<OAuthResult>;
   authHandler: AuthHandler<OAuthResult>;
   tokenIssuer: TokenIssuer;
@@ -72,29 +72,13 @@ export class OktaAuthProvider implements OAuthHandlers {
   private readonly _catalogIdentityClient: CatalogIdentityClient;
   private readonly _logger: Logger;
 
-  /**
-   * Due to passport-okta-oauth forcing options.state = true,
-   * passport-oauth2 requires express-session to be installed
-   * so that the 'state' parameter of the oauth2 flow can be stored.
-   * This implementation of StateStore matches the NullStore found within
-   * passport-oauth2, which is the StateStore implementation used when options.state = false,
-   * allowing us to avoid using express-session in order to integrate with Okta.
-   */
-  private _store: StateStore = {
-    store(_req: express.Request, cb: any) {
-      cb(null, null);
-    },
-    verify(_req: express.Request, _state: string, cb: any) {
-      cb(null, true);
-    },
-  };
-
   constructor(options: OktaAuthProviderOptions) {
     this._signInResolver = options.signInResolver;
     this._authHandler = options.authHandler;
     this._tokenIssuer = options.tokenIssuer;
     this._catalogIdentityClient = options.catalogIdentityClient;
     this._logger = options.logger;
+    const scope = (options.scope || 'openid profile email').split(' ');
 
     this._strategy = new OktaStrategy(
       {
@@ -102,8 +86,7 @@ export class OktaAuthProvider implements OAuthHandlers {
         clientSecret: options.clientSecret,
         callbackURL: options.callbackUrl,
         audience: options.audience,
-        store: this._store,
-        response_type: 'code',
+        scope: scope,
       },
       (
         accessToken: any,
@@ -115,10 +98,10 @@ export class OktaAuthProvider implements OAuthHandlers {
         done(
           undefined,
           {
+            fullProfile,
+            params,
             accessToken,
             refreshToken,
-            params,
-            fullProfile,
           },
           {
             refreshToken,
@@ -232,6 +215,7 @@ export const oktaDefaultSignInResolver: SignInResolver<OAuthResult> = async (
 ) => {
   const { profile } = info;
 
+  // TODO: Use profile.username instead of profile.email
   if (!profile.email) {
     throw new Error('Okta profile contained no email');
   }
